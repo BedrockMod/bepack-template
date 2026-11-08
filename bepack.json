@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "id": "example.my-pack",
+  "name": "我的整合包",
+  "author": {
+    "name": "请填写作者名称"
+  },
+  "description": "",
+  "version": "0.1.0",
+  "license": "LicenseRef-Pack",
+  "license_file": "licenses/pack-license.txt",
+  "mode": "mods-only",
+  "game_version": null,
+  "version_set": "stable",
+  "targets": {
+    "windows": {
+      "enabled": true,
+      "variants": {
+        "windows-x86_64": {
+          "platform": "windows-x86_64",
+          "runtime": "bedrock-client",
+          "game_version": null,
+          "loader": {
+            "type": "none",
+            "version": null
+          },
+          "client": null
+        }
+      }
+    }
+  },
+  "dependencies": [],
+  "contents": []
+}

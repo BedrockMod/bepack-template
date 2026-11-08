@@ -1,0 +1,10 @@
+.DS_Store
+Thumbs.db
+node_modules/
+.bepack-local/
+.cache/
+dist/
+*.log
+.env
+.env.*
+!.env.example

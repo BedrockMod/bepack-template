@@ -1,0 +1,9 @@
+* text=auto
+*.json text eol=lf
+*.md text eol=lf
+*.mjs text eol=lf
+*.yml text eol=lf
+*.bepack binary
+*.zip binary
+*.mcpack binary
+*.mcaddon binary
