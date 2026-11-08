@@ -215,10 +215,10 @@ export async function planPackage(options) {
         if (contentOwned.has(id)) continue;
         const relative = `${payloadRoot}/dependencies/${id}/asset`;
         const measured = await bundledAsset(relative, declared, dependency);
-        const artifactId = addArtifact({ id: `${id}/asset`, dependency: id, version, format: declared.format, size: measured.size, sha256: measured.sha256, path: relative, mounts: declared.mounts });
+        const artifactId = addArtifact({ id: lockIdentity('artifact', id, 'asset'), dependency: id, version, format: declared.format, size: measured.size, sha256: measured.sha256, path: relative, mounts: declared.mounts });
         for (const target of targets) declareAsset(id, target, artifactId);
       } else {
-        const artifactId = addArtifact({ id: `${id}/asset`, dependency: id, version, format: declared.format, size: declared.size, sha256: declared.sha256, url: dependency.source, mounts: declared.mounts });
+        const artifactId = addArtifact({ id: lockIdentity('artifact', id, 'asset'), dependency: id, version, format: declared.format, size: declared.size, sha256: declared.sha256, url: dependency.source, mounts: declared.mounts });
         for (const target of targets) declareAsset(id, target, artifactId);
       }
       continue;
@@ -234,7 +234,7 @@ export async function planPackage(options) {
       const artifact = matches[0];
       if (!safeRelative(artifact.id) || artifact.id.includes('/')) fail('BEPACK_PATH_UNSAFE', 'Unsafe metadata artifact id: ' + artifact.id);
       for (const mount of artifact.mounts) if (!(mount.source === '.' || safeRelative(mount.source)) || !safeRelative(mount.destination)) fail('BEPACK_PATH_UNSAFE', 'Unsafe artifact mount');
-      const artifactId = `${id}/${artifact.id}`;
+      const artifactId = lockIdentity('artifact', id, artifact.id);
       if (dependency.bundled) {
         const relative = `${payloadRoot}/dependencies/${id}/${artifact.id}`;
         const measured = await bundledAsset(relative, artifact, dependency);
@@ -249,9 +249,9 @@ export async function planPackage(options) {
   const evidence = [{ id: 'runtime-catalog', kind: 'runtime-catalog', url: catalog.url, sha256: catalog.sourceSha256, retrieved_at: catalog.retrievedAt }];
   if (Number.isNaN(Date.parse(evidence[0].retrieved_at))) fail('BEPACK_RUNTIME_CATALOG_INVALID', 'Runtime catalog retrieved_at is not an RFC 3339 date-time');
   for (const [id, metadata] of metadataCache) {
-    if (evidence.some(record => record.id === `dependency-metadata/${id}`)) continue;
+    if (evidence.some(record => record.id === lockIdentity('dependency-metadata', id))) continue;
     if (Number.isNaN(Date.parse(metadata.retrievedAt))) fail('BEPACK_METADATA_INVALID', `Cached metadata for ${id} has no RFC 3339 retrieval time`, { file: metadata.file });
-    evidence.push({ id: `dependency-metadata/${id}`, kind: 'dependency-metadata', url: dependencyById.get(id).source, sha256: metadata.sha256, retrieved_at: metadata.retrievedAt });
+    evidence.push({ id: lockIdentity('dependency-metadata', id), kind: 'dependency-metadata', url: dependencyById.get(id).source, sha256: metadata.sha256, retrieved_at: metadata.retrievedAt });
   }
 
   const constraintsFor = target => {
@@ -286,7 +286,7 @@ export async function planPackage(options) {
   const compatibility = [];
   const evidenceIds = constraint => {
     const ids = [evidence[0].id];
-    if (constraint.type === 'dependency' && constraint.subject.resolver === 'bepack-metadata') ids.push(`dependency-metadata/${constraint.subject.id}`);
+    if (constraint.type === 'dependency' && constraint.subject.resolver === 'bepack-metadata') ids.push(lockIdentity('dependency-metadata', constraint.subject.id));
     return ids;
   };
   const intersectGames = (author, upstream) => {

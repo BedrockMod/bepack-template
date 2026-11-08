@@ -3,10 +3,12 @@
 import assert from 'node:assert/strict';
 import {cp,mkdir,readFile,readdir,writeFile} from 'node:fs/promises';
 import path from 'node:path';
+import {createHash} from 'node:crypto';
 import test from 'node:test';
 import {fixture} from '../tools/bepack-tool/test/helpers/core-fixtures.mjs';
 import {runBuild} from '../tools/bepack-tool/src/release-build.mjs';
 import {runScan} from '../tools/bepack-tool/src/release-scan.mjs';
+import {computeScanPlan} from '../tools/bepack-tool/src/scan-plan.mjs';
 import {buildReleaseDescriptor,verifyAssetDirectory} from '../tools/bepack-tool/src/release-assets.mjs';
 import {hashFile} from '../tools/bepack-tool/src/release-files.mjs';
 import {FixtureDownloader,FixtureGitHub,NOW,makeReleaseFixture,makeVtAnalysis,makeVtPayload} from '../../bepack-registry/test/helpers/fixtures.mjs';
@@ -19,6 +21,26 @@ const json=value=>JSON.stringify(value,null,2)+'\n';
 test('offline core CLI -> five release assets -> independent registry -> immutable catalog',async t=>{
   // The fixture owns and removes its temporary root; no repository data changes.
   const f=await fixture(t);
+  // Synthetic MZ bytes exercise executable scanning, not an actual distributable mod.
+  const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
+  const target='windows-x86_64',loader={type:'levilamina',version:{exact:'1.0.0'}};
+  f.manifest.targets.windows.variants[target].loader=loader;
+  for(const game of f.catalog.games)game.loaders.push({type:loader.type,version:'1.0.0',identity:'synthetic-loader',integrity:{kind:'artifact',sha256:'c'.repeat(64)}});
+  const compatibility={targets:{[target]:{games:{versions:['1.0.1']},loader,client:null,evidence:{kind:'author',reference:'bepack.json'}}}};
+  const metadataDir=path.join(f.root,'metadata');await mkdir(metadataDir);
+  const expectedArtifacts=new Map();
+  for(const [id,resolver,asset] of [['direct-mod','direct','asset'],['metadata-mod','bepack-metadata','native']]) {
+    const bytes=Buffer.from(`MZ synthetic fixture ${id}`);
+    const mounts=[{source:'.',slot:'native-mods',destination:`${id}.dll`}];
+    const dependency={id,source:`https://example.invalid/${id}`,resolver,version:{exact:'2.0.0'},license:'MIT',license_file:'licenses/pack-license.txt',redistribution_confirmed:true,bundled:true,targets:[target],role:'mod',compatibility};
+    if(resolver==='direct')dependency.direct={size:bytes.length,sha256:hash(bytes),format:'file',mounts};
+    else await writeFile(path.join(metadataDir,id+'.json'),json({schema_version:1,id,releases:[{version:'2.0.0',compatibility,artifacts:[{id:asset,targets:[target],url:`https://example.invalid/${id}.dll`,size:bytes.length,sha256:hash(bytes),format:'file',mounts}]}]}));
+    f.manifest.dependencies.push(dependency);f.set.dependencies[id]='2.0.0';
+    await mkdir(path.join(f.project,'payload/dependencies',id),{recursive:true});
+    await writeFile(path.join(f.project,'payload/dependencies',id,asset),bytes);
+    expectedArtifacts.set(id,hash(JSON.stringify(['artifact',id,asset])));
+  }
+  await f.save();
   const commit='b'.repeat(40), tag=`v${f.manifest.version}`;
   // runBuild fingerprints the actual tool tree present in an author checkout.
   for(const name of ['scripts','tools/bepack-tool/src','tools/bepack-tool/schemas','schemas','package.json','package-lock.json']) {
@@ -28,12 +50,24 @@ test('offline core CLI -> five release assets -> independent registry -> immutab
   const assetsDir=path.join(f.root,'assets'),workDir=path.join(f.root,'release-work');
   const options=f.options();
   const context=await runBuild({projectDir:f.project,assetsDir,workDir,runtimeCatalog:f.catalogFile,
-    runtimeCatalogSha256:options.runtimeCatalogSha256,generatedAt:options.generatedAt,tag,commit,now:()=>NOW.toISOString()});
+    runtimeCatalogSha256:options.runtimeCatalogSha256,generatedAt:options.generatedAt,metadataDir,tag,commit,now:()=>NOW.toISOString()});
   const scan=await runScan({assetsDir,workDir,tag,now:()=>NOW.toISOString(),vt:{async scanFile(file,{expectedSha256,expectedSize}){
     const info=await hashFile(file);assert.equal(info.sha256,expectedSha256);assert.equal(info.size,expectedSize);
     return {analysis_id:`analysis-${info.sha256.slice(0,12)}`,sha256:info.sha256,size:info.size,
       malicious:0,suspicious:0,harmless:1,undetected:0,analyzed_at:new Date(NOW.getTime()-3600000).toISOString()};
   }}});
+  const generated=await computeScanPlan(path.join(assetsDir,context.package.name));
+  assert.equal(generated.artifacts.length,2);
+  for(const artifact of generated.artifacts) {
+    assert.equal(artifact.id,expectedArtifacts.get(artifact.dependency));
+    assert.match(artifact.id,/^[0-9a-f]{64}$/);
+    assert.ok(generated.lock.configurations.every(cfg=>cfg.dependencies.find(dep=>dep.id===artifact.dependency)?.assets.includes(artifact.id)));
+    assert.ok(scan.plan.entries.some(entry=>entry.subject===artifact.path&&entry.reason==='dependency-bytes'));
+  }
+  assert.equal(scan.plan.entries.length,3);
+  const metadataEvidence=hash(JSON.stringify(['dependency-metadata','metadata-mod']));
+  assert.ok(generated.lock.evidence.some(entry=>entry.id===metadataEvidence));
+  assert.ok(generated.lock.compatibility.some(entry=>entry.subject==='metadata-mod'&&entry.evidence.includes(metadataEvidence)));
   const service=makeReleaseFixture({packId:f.manifest.id,version:f.manifest.version,now:NOW});
   const scanInfo=await hashFile(path.join(assetsDir,'scan-report.json'));
   const descriptor=buildReleaseDescriptor({manifest:f.manifest,repository:service.source.repository,tag,commit,
