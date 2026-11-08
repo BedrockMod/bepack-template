@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:bepack:v1:runtime-catalog",
+  "title": "bepack runtime catalog (tool input, adapter provided)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "id", "provider", "retrieved_at", "source", "games"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "provider": { "type": "string", "pattern": "^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+(?:\\.v[0-9]+)?$" },
+    "retrieved_at": { "type": "string", "format": "date-time" },
+    "source": {
+      "description": "Upstream evidence the catalog was compiled from. source.sha256 is the digest of the document published at source.url; it never describes this catalog file. The digest of the catalog file itself is supplied separately by the caller (--runtime-catalog-sha256).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["url", "sha256"],
+      "properties": {
+        "url": { "type": "string", "format": "uri" },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "games": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["version", "platform", "runtime", "identity", "integrity", "loaders", "clients"],
+        "properties": {
+          "version": { "type": "string", "minLength": 1, "maxLength": 64 },
+          "platform": { "type": "string", "minLength": 1, "maxLength": 64 },
+          "runtime": { "enum": ["bedrock-client", "bedrock-server", "external-client"] },
+          "identity": { "type": "string", "minLength": 1, "maxLength": 256 },
+          "integrity": { "$ref": "#/$defs/integrity" },
+          "loaders": { "type": "array", "items": { "$ref": "#/$defs/loader" } },
+          "clients": { "type": "array", "items": { "$ref": "#/$defs/client" } }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "integrity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "sha256"],
+      "properties": {
+        "kind": { "enum": ["artifact", "distribution-manifest"] },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "loader": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "version", "identity", "integrity"],
+      "properties": {
+        "type": { "type": "string", "pattern": "^(?:levilamina|x-[a-z0-9][a-z0-9.-]*)$" },
+        "version": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "identity": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "integrity": { "$ref": "#/$defs/integrity" },
+        "recommended": { "type": "boolean", "default": false }
+      }
+    },
+    "client": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "version", "dependency"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "version": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "dependency": { "type": "string", "minLength": 1, "maxLength": 128 }
+      }
+    }
+  }
+}

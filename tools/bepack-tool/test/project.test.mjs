@@ -129,7 +129,7 @@ test('CLI exit codes and additive reports', async t => {
   result=run('validate'); assert.equal(result.status,2); assert.equal(JSON.parse(result.stderr).code,'BEPACK_ARGUMENT_INVALID');
   const reportFile=path.join(root,'report.json');
   result=run('validate','--project',root,'--report',reportFile); assert.equal(result.status,0,result.stderr);
-  result=run('validate','--project',root,'--report',reportFile); assert.equal(result.status,1); assert.match(result.stderr,/EEXIST/);
+  result=run('validate','--project',root,'--report',reportFile); assert.equal(result.status,3); assert.match(result.stderr,/EEXIST/);
   await writeFile(path.join(root,'bepack.json'),'{}');
   result=run('validate','--project',root); assert.equal(result.status,2); assert.equal(JSON.parse(result.stdout).valid,false);
 });

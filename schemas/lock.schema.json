@@ -1,0 +1,271 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:bepack:v1:lock",
+  "title": "bepack.lock.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "pack", "generated_at", "files", "artifacts", "configurations", "evidence", "compatibility", "runtimes"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "pack": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "version", "version_set"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "version": { "type": "string", "minLength": 1 },
+        "version_set": { "type": "string", "minLength": 1 }
+      }
+    },
+    "generated_at": { "type": "string", "format": "date-time" },
+    "files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "size", "sha256"],
+        "properties": {
+          "path": { "type": "string", "minLength": 1 },
+          "size": { "type": "integer", "minimum": 0 },
+          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+        }
+      }
+    },
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "dependency", "version", "format", "size", "sha256", "mounts"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "dependency": { "type": "string", "minLength": 1 },
+          "version": { "type": "string", "minLength": 1 },
+          "format": { "enum": ["file", "zip-tree"] },
+          "size": { "type": "integer", "minimum": 0 },
+          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "url": { "type": "string", "format": "uri" },
+          "path": { "type": "string", "minLength": 1 },
+          "mounts": { "type": "array", "items": { "$ref": "#/$defs/mount" } }
+        },
+        "oneOf": [{ "required": ["url"], "properties": { "url": {} } }, { "required": ["path"], "properties": { "path": {} } }],
+        "not": { "required": ["url", "path"], "properties": { "url": {}, "path": {} } }
+      }
+    },
+    "configurations": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "target", "game_version", "loader", "client", "dependencies", "contents", "runtimes"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "target": { "type": "string", "minLength": 1 },
+          "game_version": { "type": "string", "minLength": 1 },
+          "loader": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["type", "version"],
+            "properties": {
+              "type": { "type": "string", "minLength": 1 },
+              "version": { "type": ["string", "null"] }
+            }
+          },
+          "client": {
+            "oneOf": [
+              { "type": "null" },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["id", "version", "dependency"],
+                "properties": {
+                  "id": { "type": "string", "minLength": 1 },
+                  "version": { "type": "string", "minLength": 1 },
+                  "dependency": { "type": "string", "minLength": 1 }
+                }
+              }
+            ]
+          },
+          "dependencies": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["id", "version", "assets"],
+              "properties": {
+                "id": { "type": "string", "minLength": 1 },
+                "version": { "type": "string", "minLength": 1 },
+                "assets": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+              }
+            }
+          },
+          "contents": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+          "runtimes": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["game", "loader"],
+            "properties": {
+              "game": { "type": "string", "minLength": 1 },
+              "loader": { "type": ["string", "null"] }
+            }
+          }
+        }
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "kind", "url", "sha256", "retrieved_at"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "kind": { "enum": ["dependency-metadata", "runtime-catalog"] },
+          "url": { "type": "string", "format": "uri" },
+          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "retrieved_at": { "type": "string", "format": "date-time" }
+        }
+      }
+    },
+    "compatibility": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["subject_type", "subject", "target", "entry", "evidence"],
+        "properties": {
+          "subject_type": { "enum": ["dependency", "content"] },
+          "subject": { "type": "string", "minLength": 1 },
+          "target": { "type": "string", "minLength": 1 },
+          "entry": { "$ref": "#/$defs/compatibilityEntry" },
+          "evidence": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+        }
+      }
+    },
+    "runtimes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "kind", "version", "platform", "runtime", "provider", "identity", "integrity"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "kind": { "enum": ["game", "loader"] },
+          "version": { "type": "string", "minLength": 1 },
+          "platform": { "type": "string", "minLength": 1 },
+          "runtime": { "type": "string", "minLength": 1 },
+          "provider": { "type": "string", "minLength": 1 },
+          "identity": { "type": "string", "minLength": 1 },
+          "integrity": { "$ref": "#/$defs/integrity" }
+        }
+      }
+    },
+    "tested": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+  },
+  "$defs": {
+    "integrity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "sha256"],
+      "properties": {
+        "kind": { "enum": ["artifact", "distribution-manifest"] },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "mount": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "slot", "destination"],
+      "properties": {
+        "source": { "type": "string", "minLength": 1 },
+        "slot": { "enum": ["resource-packs", "behavior-packs", "worlds", "configs", "plugins", "native-mods", "client-components"] },
+        "destination": { "type": "string", "minLength": 1 }
+      }
+    },
+    "compatibilityEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["games", "loader", "client", "evidence"],
+      "properties": {
+        "games": {
+          "oneOf": [
+            { "type": "object", "additionalProperties": false, "required": ["unconstrained"], "properties": { "unconstrained": { "const": true } } },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["versions"],
+              "properties": { "versions": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } } }
+            }
+          ]
+        },
+        "loader": {
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["type", "version"],
+              "properties": {
+                "type": { "type": "string", "minLength": 1 },
+                "version": { "$ref": "#/$defs/versionRequirement" }
+              }
+            }
+          ]
+        },
+        "client": {
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["id", "version"],
+              "properties": {
+                "id": { "type": "string", "minLength": 1 },
+                "version": { "$ref": "#/$defs/versionRequirement" }
+              }
+            }
+          ]
+        },
+        "evidence": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "reference"],
+          "properties": {
+            "kind": { "enum": ["upstream", "manifest", "author"] },
+            "reference": { "type": "string", "minLength": 1 }
+          }
+        }
+      }
+    },
+    "versionRequirement": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["exact"],
+          "properties": { "exact": { "type": "string", "minLength": 1 } }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["range"],
+          "properties": {
+            "range": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["min", "max", "include_min", "include_max"],
+              "properties": {
+                "min": { "type": "string", "minLength": 1 },
+                "max": { "type": "string", "minLength": 1 },
+                "include_min": { "type": "boolean" },
+                "include_max": { "type": "boolean" }
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

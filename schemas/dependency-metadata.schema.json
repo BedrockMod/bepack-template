@@ -1,0 +1,138 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:bepack:v1:dependency-metadata",
+  "title": "bepack-metadata resolver document",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "id", "releases"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "releases": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["version", "compatibility", "artifacts"],
+        "properties": {
+          "version": { "type": "string", "minLength": 1, "maxLength": 64 },
+          "compatibility": { "$ref": "#/$defs/compatibility" },
+          "artifacts": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["id", "targets", "url", "size", "sha256", "format", "mounts"],
+              "properties": {
+                "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+                "targets": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+                "url": { "type": "string", "format": "uri" },
+                "size": { "type": "integer", "minimum": 0 },
+                "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+                "format": { "enum": ["file", "zip-tree"] },
+                "mounts": { "type": "array", "items": { "$ref": "#/$defs/mount" } }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "mount": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "slot", "destination"],
+      "properties": {
+        "source": { "type": "string", "minLength": 1 },
+        "slot": { "enum": ["resource-packs", "behavior-packs", "worlds", "configs", "plugins", "native-mods", "client-components"] },
+        "destination": { "type": "string", "minLength": 1 }
+      }
+    },
+    "compatibility": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["targets"],
+      "properties": {
+        "targets": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/compatibilityEntry" }
+        }
+      }
+    },
+    "compatibilityEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["games", "loader", "client", "evidence"],
+      "properties": {
+        "games": {
+          "oneOf": [
+            { "type": "object", "additionalProperties": false, "required": ["unconstrained"], "properties": { "unconstrained": { "const": true } } },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["versions"],
+              "properties": { "versions": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } } }
+            }
+          ]
+        },
+        "loader": {
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["type", "version"],
+              "properties": { "type": { "type": "string", "minLength": 1 }, "version": { "$ref": "#/$defs/versionRequirement" } }
+            }
+          ]
+        },
+        "client": {
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["id", "version"],
+              "properties": { "id": { "type": "string", "minLength": 1 }, "version": { "$ref": "#/$defs/versionRequirement" } }
+            }
+          ]
+        },
+        "evidence": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "reference"],
+          "properties": {
+            "kind": { "enum": ["upstream", "manifest", "author"] },
+            "reference": { "type": "string", "minLength": 1 }
+          }
+        }
+      }
+    },
+    "versionRequirement": {
+      "oneOf": [
+        { "type": "object", "additionalProperties": false, "required": ["exact"], "properties": { "exact": { "type": "string", "minLength": 1 } } },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["range"],
+          "properties": {
+            "range": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["min", "max", "include_min", "include_max"],
+              "properties": {
+                "min": { "type": "string", "minLength": 1 },
+                "max": { "type": "string", "minLength": 1 },
+                "include_min": { "type": "boolean" },
+                "include_max": { "type": "boolean" }
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

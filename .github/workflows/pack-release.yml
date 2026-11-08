@@ -1,0 +1,282 @@
+name: Bepack pack release
+
+# Author pack releases are triggered by v<version> tags only. Tool releases use
+# tool-v<semver> tags and must not run this workflow. Manual dispatch is for
+# retrying an existing tag; it never creates a tag.
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag (must be v<manifest version>)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bepack-release-${{ github.repository_id }}-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  GITHUB_REPOSITORY_ID: ${{ github.repository_id }}
+
+jobs:
+  preflight:
+    name: Preflight (tag, commit, consent)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
+      commit: ${{ steps.release.outputs.commit }}
+    steps:
+      # Pinned to the commit of the official v4.4.0 tag.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: refs/tags/${{ inputs.tag || github.ref_name }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci --ignore-scripts
+      - name: Resolve the tagged commit
+        id: release
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          TAG="$RELEASE_TAG"
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || {
+            echo "Tag must be v<semver>" >&2; exit 2;
+          }
+          COMMIT="$(git rev-parse --verify "refs/tags/$TAG^{commit}")"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "commit=$COMMIT" >> "$GITHUB_OUTPUT"
+      - name: Check manifest, tag, commit, and upload consent
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          RELEASE_COMMIT: ${{ steps.release.outputs.commit }}
+          VT_UPLOAD_CONSENT: ${{ vars.VT_UPLOAD_CONSENT }}
+        run: |
+          node scripts/bepack-release.mjs preflight \
+            --project . \
+            --tag "$RELEASE_TAG" \
+            --commit "$RELEASE_COMMIT" \
+            --repository "$GITHUB_REPOSITORY" \
+            --repository-id "$GITHUB_REPOSITORY_ID" \
+            --require-consent
+
+  build:
+    env:
+      RELEASE_TAG: ${{ needs.preflight.outputs.tag }}
+      RELEASE_COMMIT: ${{ needs.preflight.outputs.commit }}
+    name: Build frozen package
+    needs: preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+    steps:
+      # Pinned to the commit of the official v4.4.0 tag.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: refs/tags/${{ needs.preflight.outputs.tag }}
+          fetch-depth: 0
+          persist-credentials: false
+      # Pinned to the commit of the official v4.4.0 tag.
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci --ignore-scripts
+      - name: Build and stage the release assets
+        env:
+          BEPACK_RUNTIME_CATALOG_PATH: ${{ vars.BEPACK_RUNTIME_CATALOG_PATH }}
+          BEPACK_RUNTIME_CATALOG_SHA256: ${{ vars.BEPACK_RUNTIME_CATALOG_SHA256 }}
+        run: |
+          test -n "$BEPACK_RUNTIME_CATALOG_PATH" || {
+            echo "::error::Repository variable BEPACK_RUNTIME_CATALOG_PATH must name a pinned runtime catalog file in this checkout."
+            exit 1
+          }
+          node scripts/bepack-release.mjs build \
+            --project . \
+            --assets release-assets \
+            --work release-work \
+            --runtime-catalog-sha256 "$BEPACK_RUNTIME_CATALOG_SHA256" \
+            --runtime-catalog "$BEPACK_RUNTIME_CATALOG_PATH" \
+            --tag "$RELEASE_TAG" \
+            --commit "$RELEASE_COMMIT" \
+            --tool-commit "$RELEASE_COMMIT"
+      # Pinned to the commit of the official v4.6.2 tag.
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: bepack-build-${{ github.run_id }}
+          path: |
+            release-assets
+            release-work
+          if-no-files-found: error
+          retention-days: 7
+
+  scan:
+    env:
+      RELEASE_TAG: ${{ needs.preflight.outputs.tag }}
+      RELEASE_COMMIT: ${{ needs.preflight.outputs.commit }}
+    name: Strict VirusTotal scan
+    needs: [preflight, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      # Pinned to the commit of the official v4.4.0 tag.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: refs/tags/${{ needs.preflight.outputs.tag }}
+          fetch-depth: 0
+          persist-credentials: false
+      # Pinned to the commit of the official v4.3.0 tag.
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: bepack-build-${{ github.run_id }}
+          path: .
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci --ignore-scripts
+      - name: Scan the final package and every planned executable dependency
+        env:
+          VT_API_KEY: ${{ secrets.VT_API_KEY }}
+          VT_UPLOAD_CONSENT: ${{ vars.VT_UPLOAD_CONSENT }}
+        run: |
+          node scripts/bepack-release.mjs scan \
+            --assets release-assets \
+            --work release-work \
+            --tag "$RELEASE_TAG"
+      # Pinned to the commit of the official v4.6.2 tag.
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: bepack-scanned-${{ github.run_id }}
+          path: |
+            release-assets
+            release-work
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    env:
+      RELEASE_TAG: ${{ needs.preflight.outputs.tag }}
+      RELEASE_COMMIT: ${{ needs.preflight.outputs.commit }}
+    name: Publish immutable release
+    needs: [preflight, scan]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    outputs:
+      release_id: ${{ steps.publish.outputs.release_id }}
+    steps:
+      # Pinned to the commit of the official v4.4.0 tag.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: refs/tags/${{ needs.preflight.outputs.tag }}
+          fetch-depth: 0
+          persist-credentials: false
+      # Pinned to the commit of the official v4.3.0 tag.
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: bepack-scanned-${{ github.run_id }}
+          path: .
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci --ignore-scripts
+      - name: Assemble and verify the five fixed assets
+        run: |
+          node scripts/bepack-release.mjs assemble \
+            --project . \
+            --assets release-assets \
+            --work release-work \
+            --tag "$RELEASE_TAG" \
+            --commit "$RELEASE_COMMIT" \
+            --repository "$GITHUB_REPOSITORY" \
+            --repository-id "$GITHUB_REPOSITORY_ID"
+      - name: Create or resume the draft, verify, then publish
+        id: publish
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          node scripts/bepack-release.mjs publish \
+            --assets release-assets \
+            --work release-work \
+            --tag "$RELEASE_TAG" \
+            --commit "$RELEASE_COMMIT" \
+            --repository "$GITHUB_REPOSITORY" \
+            --repository-id "$GITHUB_REPOSITORY_ID" \
+            --report release-result.json
+          node -e "const r=require('./release-result.json'); process.stdout.write('release_id=' + r.release_id + '\n')" >> "$GITHUB_OUTPUT"
+      # Pinned to the commit of the official v4.6.2 tag.
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: bepack-published-${{ github.run_id }}
+          path: |
+            release-assets
+            release-result.json
+          if-no-files-found: error
+          retention-days: 7
+
+  notify:
+    env:
+      RELEASE_TAG: ${{ needs.preflight.outputs.tag }}
+      RELEASE_COMMIT: ${{ needs.preflight.outputs.commit }}
+    name: Notify registry observer (optional)
+    needs: [preflight, publish]
+    if: needs.publish.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      # Pinned to the commit of the official v4.4.0 tag.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: refs/tags/${{ needs.preflight.outputs.tag }}
+          fetch-depth: 0
+          persist-credentials: false
+      # Pinned to the commit of the official v4.3.0 tag.
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: bepack-published-${{ github.run_id }}
+          path: .
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci --ignore-scripts
+      - name: Dispatch to the registry bridge when configured
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_ID: ${{ needs.publish.outputs.release_id }}
+          DELIVERY_ID: bepack-${{ github.run_id }}-${{ needs.preflight.outputs.commit }}
+          BEPACK_REGISTRY_DISPATCH_URL: ${{ vars.BEPACK_REGISTRY_DISPATCH_URL }}
+          BEPACK_REGISTRY_DISPATCH_TOKEN: ${{ secrets.BEPACK_REGISTRY_DISPATCH_TOKEN }}
+        run: |
+          node scripts/bepack-release.mjs notify \
+            --assets release-assets \
+            --release-id "$RELEASE_ID" \
+            --delivery-id "$DELIVERY_ID"
