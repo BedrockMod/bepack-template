@@ -1,0 +1,1364 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:bepack:v1:version-set",
+  "title": "bepack v1 authoring version set",
+  "description": "Structural validation of versions/<id>.json. Empty selections and target overrides are valid authoring drafts, not proof of publishability.",
+  "$comment": "Normative source: docs/bepack-v1-格式标准.md sections 2.1 and 2.6. Shared $defs are exact mirrors of bepack.schema.json and all $ref values are local: either schema loads independently, in any order, without network access. Validate the complete replacement loader/client against the manifest only after merging. Semantic checks: id equals manifest.version_set, dependency and target references, exact choices satisfy requirements, no disabled/unknown targets, all publish dependencies selected, mods-only forbids any target game_version override, effective mode/compatibility/capabilities. Input UTF-8/BOM/duplicate keys and path/URI semantic checks remain outside JSON Schema. No lock schema is implemented.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "id",
+    "dependencies",
+    "targets"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "id": {
+      "$ref": "#/$defs/Id"
+    },
+    "dependencies": {
+      "$ref": "#/$defs/DependencySelections"
+    },
+    "targets": {
+      "$ref": "#/$defs/TargetOverrides"
+    },
+    "extensions": {
+      "$ref": "#/$defs/Extensions"
+    }
+  },
+  "$defs": {
+    "Id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]{0,63}(?![\\s\\S])"
+    },
+    "PackId": {
+      "type": "string",
+      "maxLength": 128,
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*(?:\\.[a-z0-9]+(?:-[a-z0-9]+)*)+(?![\\s\\S])"
+    },
+    "ReverseDomain": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)+(?![\\s\\S])"
+    },
+    "Extensions": {
+      "type": "object",
+      "propertyNames": {
+        "$ref": "#/$defs/ReverseDomain"
+      },
+      "additionalProperties": true,
+      "$comment": "Only extension payloads are unconstrained JSON; extension keys use reverse-domain labels. Extensions cannot change standard semantics or authorize scripts."
+    },
+    "Capabilities": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/ReverseDomain"
+      },
+      "default": []
+    },
+    "ReferenceList": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/Id"
+      }
+    },
+    "PackVersion": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(?:\\.(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*)?(?![\\s\\S])"
+    },
+    "StableSemVer": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?![\\s\\S])"
+    },
+    "GameVersion": {
+      "type": "string",
+      "pattern": "^(?:0|[1-9][0-9]{0,3}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5])(?:\\.(?:0|[1-9][0-9]{0,3}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5])){2,3}(?![\\s\\S])"
+    },
+    "NumericVersion": {
+      "type": "string",
+      "pattern": "^(?:0|[1-9][0-9]*)(?:\\.(?:0|[1-9][0-9]*)){2,3}(?![\\s\\S])"
+    },
+    "ExactVersion": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!latest$)(?!.*[\\*\\^~])\\S(?:[^\\r\\n]*\\S)?(?![\\s\\S])",
+      "$comment": "Opaque upstream exact identity, not a range expression. Semantic validation must not reinterpret this string as an ecosystem-specific selector."
+    },
+    "VersionRequirement": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "exact": {
+          "$ref": "#/$defs/ExactVersion"
+        },
+        "range": {
+          "$ref": "#/$defs/VersionRange"
+        },
+        "extensions": {
+          "$ref": "#/$defs/Extensions"
+        }
+      },
+      "oneOf": [
+        {
+          "required": [
+            "exact"
+          ],
+          "not": {
+            "required": [
+              "range"
+            ],
+            "type": "object",
+            "properties": {
+              "range": {}
+            }
+          },
+          "type": "object",
+          "properties": {
+            "exact": {}
+          }
+        },
+        {
+          "required": [
+            "range"
+          ],
+          "not": {
+            "required": [
+              "exact"
+            ],
+            "type": "object",
+            "properties": {
+              "exact": {}
+            }
+          },
+          "type": "object",
+          "properties": {
+            "range": {}
+          }
+        }
+      ]
+    },
+    "VersionRange": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "min",
+        "max",
+        "include_min",
+        "include_max"
+      ],
+      "properties": {
+        "min": {
+          "$ref": "#/$defs/NumericVersion"
+        },
+        "max": {
+          "$ref": "#/$defs/NumericVersion"
+        },
+        "include_min": {
+          "type": "boolean"
+        },
+        "include_max": {
+          "type": "boolean"
+        },
+        "extensions": {
+          "$ref": "#/$defs/Extensions"
+        }
+      },
+      "if": {
+        "properties": {
+          "min": {
+            "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?![\\s\\S])",
+            "type": "string"
+          }
+        },
+        "required": [
+          "min"
+        ],
+        "type": "object"
+      },
+      "then": {
+        "properties": {
+          "max": {
+            "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?![\\s\\S])",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "else": {
+        "properties": {
+          "max": {
+            "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+(?![\\s\\S])",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "$comment": "Boundary arity is structural; numeric ordering and interval emptiness require semantic validation. Numeric upstream ranges are not automatically bounded by MCBE's 65535 game-segment rule."
+    },
+    "HttpsUrl": {
+      "type": "string",
+      "format": "uri",
+      "pattern": "^[hH][tT][tT][pP][sS]://(?![^/?#]*@)[^/?#\\s]+(?:[/?#][^\\s]*)?(?![\\s\\S])",
+      "$comment": "Absolute HTTPS without userinfo. URI parsing, redirect and network destination safety must be checked separately."
+    },
+    "AssetUrl": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/HttpsUrl"
+        },
+        {
+          "not": {
+            "pattern": "#",
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "SafePath": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024,
+      "pattern": "^(?:(?!(?:[cC][oO][nN]|[pP][rR][nN]|[aA][uU][xX]|[nN][uU][lL]|[cC][oO][mM][1-9]|[lL][pP][tT][1-9])(?:\\.|/|$))[^/\\\\<>:\"|?*\\u0000-\\u001f\\u007f-\\u009f]{0,254}[^/\\\\<>:\"|?*\\u0000-\\u001f\\u007f-\\u009f .]/){0,31}(?!(?:[cC][oO][nN]|[pP][rR][nN]|[aA][uU][xX]|[nN][uU][lL]|[cC][oO][mM][1-9]|[lL][pP][tT][1-9])(?:\\.|/|$))[^/\\\\<>:\"|?*\\u0000-\\u001f\\u007f-\\u009f]{0,254}[^/\\\\<>:\"|?*\\u0000-\\u001f\\u007f-\\u009f .](?![\\s\\S])",
+      "$comment": "Rejects unsafe lexical segments, reserved DOS device basenames and excess segment counts. maxLength limits Unicode characters, not UTF-8 bytes: semantic validation must additionally enforce total <=1024 bytes, segment <=255 bytes, NFC, case-folded collisions and safe filesystem object types."
+    },
+    "PayloadPath": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SafePath"
+        },
+        {
+          "pattern": "^payload/",
+          "type": "string"
+        }
+      ]
+    },
+    "LicensePath": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SafePath"
+        },
+        {
+          "pattern": "^licenses/",
+          "type": "string"
+        }
+      ]
+    },
+    "License": {
+      "type": "string",
+      "pattern": "\\S",
+      "$comment": "SPDX expression or LicenseRef- name. Full expression grammar, SPDX identifiers and licensing rights require the offline semantic validator; nonempty alone is not license approval."
+    },
+    "Author": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "\\S"
+        },
+        "url": {
+          "$ref": "#/$defs/HttpsUrl"
+        },
+        "email": {
+          "type": "string"
+        },
+        "extensions": {
+          "$ref": "#/$defs/Extensions"
+        }
+      }
+    },
+    "Launcher": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "min"
+      ],
+      "properties": {
+        "min": {
+          "$ref": "#/$defs/StableSemVer"
+        },
+        "extensions": {
+          "$ref": "#/$defs/Extensions"
+        }
+      }
+    },
+    "ExtendedIdentifier": {
+      "type": "string",
+      "pattern": "^x-[a-z0-9][a-z0-9._-]*(?![\\s\\S])"
+    },
+    "Platform": {
+      "anyOf": [
+        {
+          "enum": [
+            "windows-x86_64",
+            "windows-aarch64",
+            "android-arm64",
+            "linux-x86_64"
+          ]
+        },
+        {
+          "$ref": "#/$defs/ExtendedIdentifier"
+        }
+      ]
+    },
+    "Runtime": {
+      "anyOf": [
+        {
+          "enum": [
+            "bedrock-client",
+            "bedrock-server",
+            "external-client"
+          ]
+        },
+        {
+          "$ref": "#/$defs/ExtendedIdentifier"
+        }
+      ]
+    },
+    "LoaderType": {
+      "anyOf": [
+        {
+          "enum": [
+            "none",
+            "levilamina"
+          ]
+        },
+        {
+          "$ref": "#/$defs/ExtendedIdentifier"
+        }
+      ]
+    },
+    "Loader": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "version"
+      ],
+      "properties": {
+        "type": {
+          "$ref": "#/$defs/LoaderType"
+        },
+        "version": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/VersionRequirement"
+            }
+          ]
+        },
+        "extensions": {
+          "$ref": "#/$defs/Extensions"
+        }
+      },
+      "if": {
+        "properties": {
+          "type": {
+            "const": "none"
+          }
+        },
+        "required": [
+          "type"
+        ],
+        "type": "object"
+      },
+      "then": {
+        "properties": {
+          "version": {
+            "type": "null"
+          }
+        },
+        "type": "object"
+      },
+      "else": {
+        "properties": {
+          "version": {
+            "$ref": "#/$defs/VersionRequirement"
+          }
+        },
+        "type": "object"
+      }
+    },
+    "Client": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "dependency",
+        "version"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "dependency": {
+          "$ref": "#/$defs/Id"
+        },
+        "version": {
+          "$ref": "#/$defs/VersionRequirement"
+        },
+        "extensions": {
+          "$ref": "#/$defs/Extensions"
+        }
+      }
+    },
+    "NullableClient": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/Client"
+        }
+      ]
+    },
+    "Variant": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "platform",
+        "runtime",
+        "game_version",
+        "loader",
+        "client"
+      ],
+      "properties": {
+        "platform": {
+          "$ref": "#/$defs/Platform"
+        },
+        "runtime": {
+          "$ref": "#/$defs/Runtime"
+        },
+        "game_version": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/GameVersion"
+            }
+          ]
+        },
+        "loader": {
+          "$ref": "#/$defs/Loader"
+        },
+        "client": {
+          "$ref": "#/$defs/NullableClient"
+        },
+        "requires": {
+          "$ref": "#/$defs/Capabilities"
+        },
+        "extensions": {
+          "$ref": "#/$defs/Extensions"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "anyOf": [
+              {
+                "properties": {
+                  "platform": {
+                    "pattern": "^x-",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "platform"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "runtime": {
+                    "pattern": "^x-",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "runtime"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "loader": {
+                    "properties": {
+                      "type": {
+                        "pattern": "^x-",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "type"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "loader"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "then": {
+            "required": [
+              "requires"
+            ],
+            "properties": {
+              "requires": {
+                "minItems": 1,
+                "type": "array"
+              }
+            },
+            "type": "object"
+          }
+        }
+      ],
+      "$comment": "full/modded/client loader and client mode checks apply after active version-set replacement, not prematurely to this base declaration. Capability IDs must be semantically matched to selected extensions, not merely counted."
+    },
+    "Variants": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "not": {
+        "propertyNames": {
+          "const": "extensions"
+        },
+        "type": "object"
+      },
+      "properties": {
+        "extensions": {
+          "$ref": "#/$defs/Extensions"
+        }
+      },
+      "patternProperties": {
+        "^(?!extensions$)[a-z0-9][a-z0-9._-]{0,63}(?![\\s\\S])": {
+          "$ref": "#/$defs/Variant"
+        }
+      }
+    },
+    "TargetCollection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "enabled",
+        "variants"
+      ],
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "variants": {
+          "$ref": "#/$defs/Variants"
+        },
+        "extensions": {
+          "$ref": "#/$defs/Extensions"
+        }
+      }
+    },
+    "WindowsCollection": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/TargetCollection"
+        },
+        {
+          "properties": {
+            "variants": {
+              "properties": {
+                "extensions": true
+              },
+              "additionalProperties": {
+                "properties": {
+                  "platform": {
+                    "enum": [
+                      "windows-x86_64",
+                      "windows-aarch64"
+                    ]
+                  },
+                  "runtime": {
+                    "const": "bedrock-client"
+                  }
+                },
+                "type": "object"
+              },
+              "type": "object"
+            }
+          },
+          "type": "object"
+        }
+      ]
+    },
+    "AndroidCollection": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/TargetCollection"
+        },
+        {
+          "properties": {
+            "variants": {
+              "properties": {
+                "extensions": true
+              },
+              "additionalProperties": {
+                "properties": {
+                  "platform": {
+                    "const": "android-arm64"
+                  },
+                  "runtime": {
+                    "const": "bedrock-client"
+                  }
+                },
+                "type": "object"
+              },
+              "type": "object"
+            }
+          },
+          "type": "object"
+        }
+      ]
+    },
+    "LinuxCollection": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/TargetCollection"
+        },
+        {
+          "properties": {
+            "variants": {
+              "properties": {
+                "extensions": true
+              },
+              "additionalProperties": {
+                "required": [
+                  "requires"
+                ],
+                "properties": {
+                  "platform": {
+                    "const": "linux-x86_64"
+                  },
+                  "runtime": {
+                    "const": "external-client"
+                  },
+                  "requires": {
+                    "minItems": 1,
+                    "type": "array"
+                  }
+                },
+                "type": "object"
+              },
+              "type": "object"
+            }
+          },
+          "type": "object"
+        }
+      ]
+    },
+    "BdsCollection": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/TargetCollection"
+        },
+        {
+          "properties": {
+            "variants": {
+              "properties": {
+                "extensions": true
+              },
+              "additionalProperties": {
+                "properties": {
+                  "platform": {
+                    "enum": [
+                      "windows-x86_64",
+                      "windows-aarch64",
+                      "linux-x86_64"
+                    ]
+                  },
+                  "runtime": {
+                    "const": "bedrock-server"
+                  }
+                },
+                "type": "object"
+              },
+              "type": "object"
+            }
+          },
+          "type": "object"
+        }
+      ]
+    },
+    "TargetCollections": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "windows": {
+          "$ref": "#/$defs/WindowsCollection"
+        },
+        "android": {
+          "$ref": "#/$defs/AndroidCollection"
+        },
+        "linux": {
+          "$ref": "#/$defs/LinuxCollection"
+        },
+        "bds": {
+          "$ref": "#/$defs/BdsCollection"
+        },
+        "extensions": {
+          "$ref": "#/$defs/Extensions"
+        }
+      },
+      "patternProperties": {
+        "^x-[a-z0-9][a-z0-9._-]*(?![\\s\\S])": {
+          "$ref": "#/$defs/TargetCollection"
+        }
+      },
+      "not": {
+        "properties": {
+          "extensions": true
+        },
+        "additionalProperties": {
+          "properties": {
+            "enabled": {
+              "const": false
+            }
+          },
+          "type": "object"
+        },
+        "type": "object"
+      },
+      "$comment": "At least one real collection must be enabled. IDs must also be globally unique across collection variants; platform/runtime pairs must be unique within each collection."
+    },
+    "CompatibilityLoader": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "version"
+      ],
+      "properties": {
+        "type": {
+          "anyOf": [
+            {
+              "const": "levilamina"
+            },
+            {
+              "$ref": "#/$defs/ExtendedIdentifier"
+            }
+          ]
+        },
+        "version": {
+          "$ref": "#/$defs/VersionRequirement"
+        },
+        "extensions": {
+          "$ref": "#/$defs/Extensions"
+        }
+      },
+      "$comment": "Use entry.loader=null to add no loader constraint; non-null constraints always have VersionRequirement, never a null version."
+    },
+    "CompatibilityClient": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "version"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "version": {
+          "$ref": "#/$defs/VersionRequirement"
+        },
+        "extensions": {
+          "$ref": "#/$defs/Extensions"
+        }
+      }
+    },
+    "CompatibleGames": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "versions": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/GameVersion"
+          }
+        },
+        "unconstrained": {
+          "const": true
+        },
+        "extensions": {
+          "$ref": "#/$defs/Extensions"
+        }
+      },
+      "oneOf": [
+        {
+          "required": [
+            "versions"
+          ],
+          "not": {
+            "required": [
+              "unconstrained"
+            ],
+            "type": "object",
+            "properties": {
+              "unconstrained": {}
+            }
+          },
+          "type": "object",
+          "properties": {
+            "versions": {}
+          }
+        },
+        {
+          "required": [
+            "unconstrained"
+          ],
+          "not": {
+            "required": [
+              "versions"
+            ],
+            "type": "object",
+            "properties": {
+              "versions": {}
+            }
+          },
+          "type": "object",
+          "properties": {
+            "unconstrained": {}
+          }
+        }
+      ]
+    },
+    "CompatibilityEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "reference"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "upstream",
+            "manifest",
+            "author"
+          ]
+        },
+        "reference": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/HttpsUrl"
+            },
+            {
+              "$ref": "#/$defs/SafePath"
+            }
+          ]
+        },
+        "extensions": {
+          "$ref": "#/$defs/Extensions"
+        }
+      }
+    },
+    "CompatibilityEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "games",
+        "loader",
+        "client",
+        "evidence"
+      ],
+      "properties": {
+        "games": {
+          "$ref": "#/$defs/CompatibleGames"
+        },
+        "loader": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/CompatibilityLoader"
+            }
+          ]
+        },
+        "client": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/CompatibilityClient"
+            }
+          ]
+        },
+        "evidence": {
+          "$ref": "#/$defs/CompatibilityEvidence"
+        },
+        "extensions": {
+          "$ref": "#/$defs/Extensions"
+        }
+      }
+    },
+    "CompatibilityTargets": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "extensions": {
+          "$ref": "#/$defs/Extensions"
+        }
+      },
+      "patternProperties": {
+        "^(?!extensions$)[a-z0-9][a-z0-9._-]{0,63}(?![\\s\\S])": {
+          "$ref": "#/$defs/CompatibilityEntry"
+        }
+      }
+    },
+    "Compatibility": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "targets"
+      ],
+      "properties": {
+        "targets": {
+          "$ref": "#/$defs/CompatibilityTargets"
+        },
+        "extensions": {
+          "$ref": "#/$defs/Extensions"
+        }
+      }
+    },
+    "Slot": {
+      "enum": [
+        "resource-packs",
+        "behavior-packs",
+        "worlds",
+        "configs",
+        "plugins",
+        "native-mods",
+        "client-components"
+      ]
+    },
+    "Mount": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source",
+        "slot",
+        "destination"
+      ],
+      "properties": {
+        "source": {
+          "anyOf": [
+            {
+              "const": "."
+            },
+            {
+              "$ref": "#/$defs/SafePath"
+            }
+          ]
+        },
+        "slot": {
+          "$ref": "#/$defs/Slot"
+        },
+        "destination": {
+          "$ref": "#/$defs/SafePath"
+        },
+        "extensions": {
+          "$ref": "#/$defs/Extensions"
+        }
+      }
+    },
+    "Direct": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "size",
+        "sha256",
+        "format",
+        "mounts"
+      ],
+      "properties": {
+        "size": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}(?![\\s\\S])"
+        },
+        "format": {
+          "enum": [
+            "file",
+            "zip-tree"
+          ]
+        },
+        "mounts": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/Mount"
+          }
+        },
+        "extensions": {
+          "$ref": "#/$defs/Extensions"
+        }
+      },
+      "if": {
+        "properties": {
+          "format": {
+            "const": "file"
+          }
+        },
+        "required": [
+          "format"
+        ],
+        "type": "object"
+      },
+      "then": {
+        "properties": {
+          "mounts": {
+            "items": {
+              "properties": {
+                "source": {
+                  "const": "."
+                }
+              },
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "$comment": "Empty mounts are valid when bundled contents exclusively own installation. Semantic checks enforce single-file configs, nonoverlap, appropriate target capabilities and actual tree types.",
+      "else": {
+        "type": "object",
+        "properties": {
+          "mounts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "if": {
+                "type": "object",
+                "required": [
+                  "slot"
+                ],
+                "properties": {
+                  "slot": {
+                    "const": "configs"
+                  }
+                }
+              },
+              "then": {
+                "type": "object",
+                "properties": {
+                  "source": {
+                    "not": {
+                      "const": "."
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "Dependency": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "source",
+        "resolver",
+        "version",
+        "license",
+        "bundled",
+        "targets",
+        "role"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "source": {
+          "$ref": "#/$defs/AssetUrl"
+        },
+        "resolver": {
+          "type": "string",
+          "pattern": "\\S",
+          "$comment": "Built-ins are bepack-metadata/direct; other resolvers require a declared global adapter capability. The specification does not require x- on resolver names."
+        },
+        "version": {
+          "$ref": "#/$defs/VersionRequirement"
+        },
+        "license": {
+          "type": "string",
+          "$comment": "Empty is permitted only for an unbundled authoring declaration; publishing and licensing checks remain mandatory."
+        },
+        "license_file": {
+          "$ref": "#/$defs/LicensePath"
+        },
+        "license_url": {
+          "$ref": "#/$defs/HttpsUrl"
+        },
+        "redistribution_confirmed": {
+          "type": "boolean",
+          "default": false
+        },
+        "bundled": {
+          "type": "boolean"
+        },
+        "targets": {
+          "$ref": "#/$defs/ReferenceList"
+        },
+        "role": {
+          "enum": [
+            "content",
+            "mod",
+            "client"
+          ]
+        },
+        "compatibility": {
+          "$ref": "#/$defs/Compatibility"
+        },
+        "direct": {
+          "$ref": "#/$defs/Direct"
+        },
+        "extensions": {
+          "$ref": "#/$defs/Extensions"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "resolver": {
+                "const": "direct"
+              }
+            },
+            "required": [
+              "resolver"
+            ],
+            "type": "object"
+          },
+          "then": {
+            "required": [
+              "direct",
+              "compatibility"
+            ],
+            "type": "object",
+            "properties": {
+              "direct": {},
+              "compatibility": {}
+            }
+          },
+          "else": {
+            "not": {
+              "required": [
+                "direct"
+              ],
+              "type": "object",
+              "properties": {
+                "direct": {}
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "bundled": {
+                "const": true
+              }
+            },
+            "required": [
+              "bundled"
+            ],
+            "type": "object"
+          },
+          "then": {
+            "required": [
+              "redistribution_confirmed"
+            ],
+            "properties": {
+              "redistribution_confirmed": {
+                "const": true
+              },
+              "license": {
+                "$ref": "#/$defs/License"
+              }
+            },
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "license": {
+                      "pattern": "(^|[^A-Za-z0-9.-])LicenseRef-[A-Za-z0-9.-]+",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "license"
+                  ],
+                  "type": "object"
+                },
+                "then": {
+                  "required": [
+                    "license_file"
+                  ],
+                  "type": "object",
+                  "properties": {
+                    "license_file": {}
+                  }
+                }
+              }
+            ],
+            "type": "object"
+          }
+        }
+      ]
+    },
+    "Content": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "category",
+        "path",
+        "targets",
+        "source",
+        "destination"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "category": {
+          "enum": [
+            "resource-pack",
+            "behavior-pack",
+            "world",
+            "config",
+            "ll-plugin",
+            "native-mod",
+            "client-component"
+          ]
+        },
+        "path": {
+          "$ref": "#/$defs/PayloadPath"
+        },
+        "targets": {
+          "$ref": "#/$defs/ReferenceList"
+        },
+        "source": {
+          "enum": [
+            "local",
+            "instance",
+            "dependency"
+          ]
+        },
+        "dependency": {
+          "$ref": "#/$defs/Id"
+        },
+        "destination": {
+          "$ref": "#/$defs/SafePath"
+        },
+        "compatibility": {
+          "$ref": "#/$defs/Compatibility"
+        },
+        "replaces": {
+          "$ref": "#/$defs/Id"
+        },
+        "extensions": {
+          "$ref": "#/$defs/Extensions"
+        }
+      },
+      "if": {
+        "properties": {
+          "source": {
+            "const": "dependency"
+          }
+        },
+        "required": [
+          "source"
+        ],
+        "type": "object"
+      },
+      "then": {
+        "required": [
+          "dependency"
+        ],
+        "type": "object",
+        "properties": {
+          "dependency": {}
+        }
+      }
+    },
+    "DependencySelections": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "extensions": {
+          "$ref": "#/$defs/Extensions"
+        }
+      },
+      "patternProperties": {
+        "^(?!extensions$)[a-z0-9][a-z0-9._-]{0,63}(?![\\s\\S])": {
+          "$ref": "#/$defs/ExactVersion"
+        }
+      }
+    },
+    "TargetOverrides": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "extensions": {
+          "$ref": "#/$defs/Extensions"
+        }
+      },
+      "patternProperties": {
+        "^(?!extensions$)[a-z0-9][a-z0-9._-]{0,63}(?![\\s\\S])": {
+          "$ref": "#/$defs/TargetOverride"
+        }
+      }
+    },
+    "TargetOverride": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "game_version": {
+          "$ref": "#/$defs/GameVersion"
+        },
+        "loader": {
+          "$ref": "#/$defs/Loader"
+        },
+        "client": {
+          "$ref": "#/$defs/NullableClient"
+        },
+        "extensions": {
+          "$ref": "#/$defs/Extensions"
+        }
+      },
+      "$comment": "Each present loader or client replaces the entire base object; partial objects are invalid. Null client is an explicit replacement; null game_version is never a legal override."
+    }
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "name": "@bedrockmod/bepack-tool",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "node --test tools/bepack-tool/test/*.test.mjs",
+    "validate": "node scripts/bepack.mjs validate --project ."
+  },
+  "dependencies": {
+    "ajv": "8.20.0",
+    "spdx-expression-parse": "5.0.0"
+  }
+}
